@@ -48,21 +48,23 @@ class JobProcessor:
 
         response = self._clean_json_response(response)
 
-        try:
-            data = json.loads(response)
-            return data.get("job_title", ""), data.get("job_description", "")
-        except json.JSONDecodeError:
-            # Use json_repair to fix the JSON
-            UserInterface.info("Attempting to repair JSON for job parsing...")
-            repaired_response = repair_json(response)
+        attempts = 0
+        while True:
             try:
-                data = json.loads(repaired_response)
-                UserInterface.success("JSON repair successful for job parsing")
+                data = json.loads(response)
+                if attempts > 0:
+                    UserInterface.success(f"JSON repair successful after {attempts} attempt(s) for job parsing.")
                 return data.get("job_title", ""), data.get("job_description", "")
             except json.JSONDecodeError as e:
-                logging.error(f"Failed to parse repaired JSON: {e}")
-                UserInterface.error("Failed to repair JSON for job parsing")
-                raise RuntimeError("Failed to parse JSON response from LLM for job parsing")
+                if attempts == 0:
+                    UserInterface.info("Attempting to repair JSON for job parsing...")
+                attempts += 1
+                if attempts > 3:
+                    logging.error(f"Failed to parse repaired JSON after {attempts} attempts: {e}")
+                    UserInterface.error("Failed to repair JSON for job parsing")
+                    raise RuntimeError("Failed to parse JSON response from LLM for job parsing")
+                response = repair_json(response)
+                UserInterface.info(f"JSON repair attempt {attempts} for job parsing.")
 
     def extract_requirements(self, description):
         prompt = (

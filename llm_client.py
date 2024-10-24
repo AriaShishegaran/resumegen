@@ -16,12 +16,18 @@ class OllamaClient:
                 "model": self.model,
                 "prompt": prompt,
                 "options": {
-                    "temperature": 0.7,
-                    "max_tokens": 2048  # Allow for longer responses
+                    "temperature": 0.1,        # Low temperature for consistent outputs
+                    "max_tokens": 4096,        # Maximum possible tokens
+                    "top_p": 0.95,            # High top_p for good token selection
+                    "top_k": 40,              # Balanced top_k
+                    "repeat_penalty": 1.1,     # Slight penalty for repetition
+                    "frequency_penalty": 0.1,  # Small penalty for frequent tokens
+                    "presence_penalty": 0.1,   # Small penalty for present tokens
+                    "seed": 42                # Fixed seed for reproducibility
                 },
                 "stream": False
             }
-            logging.debug(f"Sending payload to /api/generate: {json.dumps(payload, indent=2)}")
+            logging.debug(f"Sending payload to /api/generate: {json.dumps(payload, indent=2, ensure_ascii=False)}")
             response = requests.post(
                 f"{self.base_url}/api/generate",
                 json=payload,

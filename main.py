@@ -11,7 +11,7 @@ logging.basicConfig(
     level=logging.INFO,
     format='%(message)s',
     handlers=[
-        logging.FileHandler("debug.log"),
+        logging.FileHandler("debug.log", encoding='utf-8'),
         logging.StreamHandler(sys.stdout)
     ]
 )
@@ -19,7 +19,7 @@ logging.basicConfig(
 def main():
     try:
         if len(sys.argv) != 3:
-            UserInterface.error("Usage: python script.py <resume_template> <job_url>")
+            UserInterface.error("Usage: python script.py <template.docx> <job_url>")
             sys.exit(1)
 
         template_path, job_url = sys.argv[1], sys.argv[2]
@@ -44,23 +44,23 @@ def main():
 
         # Process resume
         UserInterface.progress("Loading resume template...")
-        resume_content = resume_processor.load_template(template_path)
+        resume_document, doc_structure = resume_processor.load_template(template_path)
         UserInterface.success("Resume template loaded")
 
         # Parse resume
         UserInterface.progress("Parsing resume...")
-        resume_dict = resume_processor.parse_resume(resume_content)
+        resume_dict = resume_processor.parse_resume(doc_structure)
         UserInterface.success("Resume parsed")
 
         # Optimize resume
         UserInterface.progress("Optimizing resume...")
-        resume_processor.optimize_resume(resume_dict, requirements)
+        optimized_resume_dict = resume_processor.optimize_resume(resume_dict, requirements)
         UserInterface.success("Resume optimized")
 
         # Create document
         UserInterface.progress("Creating ATS-friendly document...")
         output_path = "ATS_Resume.docx"
-        resume_processor.create_document(resume_dict, output_path)
+        resume_processor.create_document(resume_document, optimized_resume_dict, output_path)
         UserInterface.success(f"Resume saved as: {output_path}")
 
     except Exception as e:
