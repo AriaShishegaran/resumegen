@@ -3,7 +3,7 @@ import json
 import logging
 from bs4 import BeautifulSoup
 from json_repair import repair_json
-from llm_client import OllamaClient
+from user_interface import UserInterface
 
 class JobProcessor:
     def __init__(self, llm_client):
@@ -53,13 +53,15 @@ class JobProcessor:
             return data.get("job_title", ""), data.get("job_description", "")
         except json.JSONDecodeError:
             # Use json_repair to fix the JSON
-            logging.info("Attempting to repair JSON for job parsing")
+            UserInterface.info("Attempting to repair JSON for job parsing...")
             repaired_response = repair_json(response)
             try:
                 data = json.loads(repaired_response)
+                UserInterface.success("JSON repair successful for job parsing")
                 return data.get("job_title", ""), data.get("job_description", "")
             except json.JSONDecodeError as e:
                 logging.error(f"Failed to parse repaired JSON: {e}")
+                UserInterface.error("Failed to repair JSON for job parsing")
                 raise RuntimeError("Failed to parse JSON response from LLM for job parsing")
 
     def extract_requirements(self, description):

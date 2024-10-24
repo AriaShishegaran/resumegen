@@ -1,6 +1,5 @@
 import sys
 import logging
-import os
 
 from user_interface import UserInterface
 from llm_client import OllamaClient
@@ -55,13 +54,13 @@ def main():
 
         # Optimize resume
         UserInterface.progress("Optimizing resume...")
-        optimized_resume = resume_processor.optimize_resume(resume_dict, requirements)
+        resume_processor.optimize_resume(resume_dict, requirements)
         UserInterface.success("Resume optimized")
 
         # Create document
         UserInterface.progress("Creating ATS-friendly document...")
         output_path = "ATS_Resume.docx"
-        resume_processor.create_document(optimized_resume, output_path)
+        resume_processor.create_document(resume_dict, output_path)
         UserInterface.success(f"Resume saved as: {output_path}")
 
     except Exception as e:

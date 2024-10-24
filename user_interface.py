@@ -12,6 +12,10 @@ class UserInterface:
         print(f"→ {message}")
 
     @staticmethod
+    def info(message):
+        print(f"ℹ {message}")
+
+    @staticmethod
     def print_requirements(requirements):
         print("\nKey Requirements:")
         print("=================")
