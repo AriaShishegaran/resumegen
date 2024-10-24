@@ -1,3 +1,5 @@
+# main.py
+
 import sys
 import logging
 
@@ -8,11 +10,10 @@ from resume_processor import ResumeProcessor
 
 # Configure logging
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.DEBUG,  # Set to DEBUG to capture detailed logs
     format='%(message)s',
     handlers=[
         logging.FileHandler("debug.log", encoding='utf-8'),
-        logging.StreamHandler(sys.stdout)
     ]
 )
 
@@ -42,26 +43,20 @@ def main():
         # Print key requirements
         UserInterface.print_requirements(requirements)
 
-        # Process resume
+        # Load the template
         UserInterface.progress("Loading resume template...")
-        resume_document, doc_structure = resume_processor.load_template(template_path)
+        resume_document = resume_processor.load_template(template_path)
         UserInterface.success("Resume template loaded")
 
-        # Parse resume
-        UserInterface.progress("Parsing resume...")
-        resume_dict = resume_processor.parse_resume(doc_structure)
-        UserInterface.success("Resume parsed")
+        # Process the document
+        UserInterface.progress("Processing resume...")
+        resume_processor.process_document(resume_document, requirements)
+        UserInterface.success("Resume processed")
 
-        # Optimize resume
-        UserInterface.progress("Optimizing resume...")
-        optimized_resume_dict = resume_processor.optimize_resume(resume_dict, requirements)
-        UserInterface.success("Resume optimized")
-
-        # Create document
-        UserInterface.progress("Creating ATS-friendly document...")
+        # Save the document
+        UserInterface.progress("Saving optimized resume...")
         output_path = "ATS_Resume.docx"
-        resume_processor.create_document(resume_document, optimized_resume_dict, output_path)
-        UserInterface.success(f"Resume saved as: {output_path}")
+        resume_processor.save_document(resume_document, output_path)
 
     except Exception as e:
         UserInterface.error(str(e))
