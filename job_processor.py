@@ -1,8 +1,7 @@
-import requests
-import json
 import logging
+import requests
 from bs4 import BeautifulSoup
-from json_repair import repair_json
+from urllib.parse import urlparse, unquote
 from user_interface import UserInterface
 
 class JobProcessor:
@@ -15,73 +14,82 @@ class JobProcessor:
     def fetch_and_parse(self, url):
         try:
             if 'greenhouse.io' in url:
-                parts = url.rstrip('/').split('/')
-                job_id = parts[-1].split('#')[0]
-                company = parts[-3]
-                api_url = f"https://boards-api.greenhouse.io/v1/boards/{company}/jobs/{job_id}"
-                response = requests.get(api_url, headers=self.headers)
-                response.raise_for_status()
-                data = response.json()
-                return data.get('title', ''), data.get('content', '')
+                job_title, job_description = self._fetch_greenhouse_job(url)
             else:
-                response = requests.get(url, headers=self.headers)
-                response.raise_for_status()
-                soup = BeautifulSoup(response.text, 'html.parser')
-                return self._parse_html_content(soup)
+                job_title, job_description = self._fetch_generic_job(url)
+            return job_title, job_description
         except Exception as e:
             logging.error(f"Error processing job posting: {str(e)}")
             raise RuntimeError("Failed to process job posting")
 
-    def _parse_html_content(self, soup):
-        title = soup.find('h1').get_text(strip=True) if soup.find('h1') else ''
-        description = soup.get_text(separator=' ', strip=True)
-
-        prompt = (
-            f"Extract the job title and description from this text:\n\n"
-            f"{description}\n\n"
-            'Format as JSON: {"job_title": "title", "job_description": "description"}\n'
-            "Return the result strictly as valid JSON. Do not include any additional text, explanations, or code block markers."
-        )
-
-        response = self.llm.generate(prompt)
-        logging.debug(f"LLM Response for job parsing:\n{response}")
-
-        response = self._clean_json_response(response)
-
-        attempts = 0
-        while True:
+    def _fetch_greenhouse_job(self, url):
+        parsed_url = urlparse(url)
+        path_parts = parsed_url.path.strip('/').split('/')
+        # Find 'jobs' in path_parts
+        if 'jobs' in path_parts:
+            jobs_index = path_parts.index('jobs')
             try:
-                data = json.loads(response)
-                if attempts > 0:
-                    UserInterface.success(f"JSON repair successful after {attempts} attempt(s) for job parsing.")
-                return data.get("job_title", ""), data.get("job_description", "")
-            except json.JSONDecodeError as e:
-                if attempts == 0:
-                    UserInterface.info("Attempting to repair JSON for job parsing...")
-                attempts += 1
-                if attempts > 3:
-                    logging.error(f"Failed to parse repaired JSON after {attempts} attempts: {e}")
-                    UserInterface.error("Failed to repair JSON for job parsing")
-                    raise RuntimeError("Failed to parse JSON response from LLM for job parsing")
-                response = repair_json(response)
-                UserInterface.info(f"JSON repair attempt {attempts} for job parsing.")
+                job_id = path_parts[jobs_index + 1].split('#')[0]
+                company = path_parts[jobs_index - 1]
+                api_url = f"https://boards-api.greenhouse.io/v1/boards/{company}/jobs/{job_id}"
+                response = requests.get(api_url, headers=self.headers)
+                response.raise_for_status()
+                data = response.json()
+                job_title = data.get('title', '')
+                job_description = data.get('content', '')
+                if not job_title or not job_description:
+                    raise RuntimeError("Job title or description not found in Greenhouse API response.")
+                return job_title, job_description
+            except IndexError:
+                raise RuntimeError("Invalid Greenhouse URL format.")
+        else:
+            raise RuntimeError("Invalid Greenhouse URL: 'jobs' not found in path.")
 
-    def extract_requirements(self, description):
+    def _fetch_generic_job(self, url):
+        response = requests.get(url, headers=self.headers)
+        response.raise_for_status()
+        soup = BeautifulSoup(response.text, 'html.parser')
+        # Attempt to find the job title
+        job_title = soup.find('h1')
+        if not job_title:
+            job_title = soup.find('h2')
+        if not job_title:
+            raise RuntimeError("Job title not found on the page.")
+        job_title_text = job_title.get_text(strip=True)
+        # Attempt to find the job description
+        description_divs = soup.find_all('div', class_=['description', 'job-description', 'content', 'section'])
+        job_description_text = ''
+        if description_divs:
+            for div in description_divs:
+                job_description_text += div.get_text(separator='\n', strip=True) + '\n'
+        else:
+            # Fallback to the main content
+            job_description_text = soup.get_text(separator='\n', strip=True)
+        if not job_description_text:
+            raise RuntimeError("Job description not found on the page.")
+        return job_title_text, job_description_text.strip()
+
+    def extract_requirements(self, job_description):
         prompt = (
-            f"Extract the key requirements from this job description:\n\n"
-            f"{description}\n\n"
-            "Return as a numbered list.\n"
-            "Do not include any additional text or explanations."
+            f"Job Description:\n{job_description}\n\n"
+            "Instructions:\n"
+            "1. Extract the key requirements and qualifications from the job description.\n"
+            "2. Return them as a numbered list.\n"
+            "3. Do not include any additional text or commentary.\n"
+            "Do not include any additional text, explanations, or code block markers."
         )
-        response = self.llm.generate(prompt)
-        logging.debug(f"LLM Response for requirements extraction:\n{response}")
 
-        response = self._clean_json_response(response)
+        try:
+            response = self.llm.generate(prompt)
+            logging.debug(f"LLM Response for requirements extraction:\n{response}")
 
-        requirements = self._parse_requirements(response)
-        if not requirements:
-            raise RuntimeError("Failed to extract requirements from LLM response")
-        return requirements
+            requirements = self._parse_requirements(response)
+            if not requirements:
+                raise RuntimeError("Failed to extract requirements from LLM response")
+            return requirements
+        except Exception as e:
+            logging.error(f"Exception in extract_requirements: {str(e)}")
+            raise RuntimeError(f"Failed to extract requirements: {str(e)}")
 
     def _parse_requirements(self, text):
         lines = text.strip().split('\n')
@@ -92,11 +100,3 @@ class JobProcessor:
                 requirement = line.lstrip('0123456789.- ').strip()
                 requirements.append(requirement)
         return requirements
-
-    def _clean_json_response(self, response):
-        response = response.strip()
-        if response.startswith('```') and response.endswith('```'):
-            response = response[3:-3].strip()
-        if response.startswith('json'):
-            response = response[4:].strip()
-        return response
